@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="물마시기">
+<meta name="theme-color" content="#eaf4fb">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%232f7fd6'/%3E%3Ctext x='50' y='70' font-size='58' text-anchor='middle'%3E%F0%9F%92%A7%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%232f7fd6'/%3E%3Ctext x='50' y='70' font-size='58' text-anchor='middle'%3E%F0%9F%92%A7%3C/text%3E%3C/svg%3E">
+<title>물마시기 체크</title>
+<style>
+  :root{
+    --blue:#2f7fd6;
+    --blue-light:#eaf4fb;
+    --blue-mid:#cfe6f7;
+    --ink:#1c2b3a;
+    --sub:#6b7b8c;
+    --line:#e1e8ee;
+    --green:#3aa76d;
+    --green-light:#e5f5ec;
+    --amber:#e0982c;
+    --amber-light:#fbf0dd;
+    --bg:#f4f8fb;
+    --card:#ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --blue:#5b9fe0;
+      --blue-light:#132433;
+      --blue-mid:#1c3a52;
+      --ink:#e8eef4;
+      --sub:#9fb0c0;
+      --line:#2a3948;
+      --green:#4fbf8a;
+      --green-light:#123024;
+      --amber:#e6ac52;
+      --amber-light:#332a15;
+      --bg:#0f1620;
+      --card:#17212c;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    padding:20px 14px 60px;
+  }
+  .wrap{max-width:440px;margin:0 auto;}
+  .day-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .day-nav .navbtn{
+    border:1px solid var(--line);background:var(--card);border-radius:10px;
+    width:34px;height:34px;font-size:16px;color:var(--ink);cursor:pointer;flex-shrink:0;
+  }
+  .day-nav .navbtn:disabled{opacity:.35;cursor:default;}
+  .day-nav .center{text-align:center;flex:1;}
+  .day-nav h1{font-size:16px;font-weight:700;margin:0;}
+  .day-nav .badge{
+    display:inline-block;margin-top:2px;font-size:11px;color:var(--blue);
+    background:var(--blue-light);padding:2px 8px;border-radius:8px;
+  }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:18px;
+    margin-bottom:16px;
+  }
+
+  .progress-top{display:flex;align-items:center;gap:14px;}
+  .cup-visual{
+    position:relative;width:56px;height:64px;flex-shrink:0;
+  }
+  .cup-visual svg{width:100%;height:100%;display:block;}
+  .progress-text{flex:1;}
+  .progress-text .big{font-size:22px;font-weight:700;}
+  .progress-text .small{font-size:13px;color:var(--sub);margin-top:2px;}
+  .bar-outer{
+    margin-top:14px;height:10px;border-radius:6px;background:var(--blue-light);overflow:hidden;
+  }
+  .bar-inner{
+    height:100%;background:var(--blue);border-radius:6px;
+    transition:width .3s ease;
+  }
+
+  .slots{display:flex;flex-direction:column;gap:8px;}
+  .slot{
+    padding:10px 12px;border-radius:12px;border:1px solid var(--line);
+    background:var(--bg);
+    transition:background .15s ease, border-color .15s ease;
+  }
+  .slot.checked{
+    background:var(--blue-light);border-color:var(--blue-mid);
+  }
+  .slot .row1{display:flex;align-items:center;gap:10px;}
+  .slot .circle-btn{
+    -webkit-appearance:none;appearance:none;border:none;background:transparent;padding:0;cursor:pointer;
+    flex-shrink:0;
+  }
+  .slot .circle{
+    width:30px;height:30px;border-radius:50%;
+    border:2px solid var(--line);
+    display:flex;align-items:center;justify-content:center;
+    font-size:15px;color:transparent;
+    transition:all .15s ease;
+  }
+  .slot.checked .circle{
+    background:var(--blue);border-color:var(--blue);color:#fff;
+  }
+  .slot .label{flex:1;min-width:0;}
+  .slot .label .time{font-weight:700;font-size:14px;}
+  .slot .label .period{font-size:12px;color:var(--sub);margin-top:1px;}
+  .slot .amount{
+    display:flex;align-items:center;gap:4px;flex-shrink:0;
+  }
+  .slot .amount input{
+    -webkit-appearance:none;appearance:none;
+    width:56px;text-align:right;font-size:14px;font-weight:600;color:var(--ink);
+    background:var(--card);border:1px solid var(--line);border-radius:8px;
+    padding:6px 6px;
+  }
+  .slot .amount span{font-size:12px;color:var(--sub);}
+  .slot .presets{
+    display:flex;gap:6px;margin-top:8px;padding-left:40px;flex-wrap:wrap;
+  }
+  .slot .presets button{
+    -webkit-appearance:none;appearance:none;cursor:pointer;
+    font-size:12px;color:var(--sub);background:var(--card);
+    border:1px solid var(--line);border-radius:20px;padding:5px 10px;
+  }
+  .slot .presets button.active{
+    color:var(--blue);border-color:var(--blue-mid);background:var(--blue-light);font-weight:600;
+  }
+
+  .alarm-status{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-size:13px;color:var(--sub);
+  }
+  .alarm-status button{
+    font-size:13px;font-weight:600;color:var(--blue);background:var(--blue-light);
+    border:none;padding:8px 14px;border-radius:10px;cursor:pointer;
+  }
+  .note{
+    font-size:12px;color:var(--sub);line-height:1.6;margin-top:10px;
+  }
+
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .cal-head h2{font-size:15px;font-weight:700;margin:0;}
+  .cal-head .nav{display:flex;gap:6px;}
+  .cal-head button{
+    border:1px solid var(--line);background:var(--card);border-radius:8px;
+    width:30px;height:30px;font-size:14px;color:var(--ink);cursor:pointer;
+  }
+  .cal-summary{font-size:13px;color:var(--sub);margin-bottom:12px;}
+  .cal-summary b{color:var(--ink);}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .cal-dow{font-size:11px;color:var(--sub);text-align:center;padding-bottom:4px;}
+  .cal-day{
+    aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;font-size:11px;gap:2px;
+    background:var(--bg);color:var(--sub);border:none;
+    font-family:inherit;
+  }
+  .cal-day.clickable{cursor:pointer;}
+  .cal-day.empty{background:transparent;}
+  .cal-day .n{font-weight:600;color:var(--ink);}
+  .cal-day.selected{border:1.5px solid var(--blue);}
+  .cal-day.today .n{text-decoration:underline;}
+  .cal-day.partial{background:var(--amber-light);}
+  .cal-day.partial .n{color:var(--amber);}
+  .cal-day.done{background:var(--green-light);}
+  .cal-day.done .n{color:var(--green);}
+  .cal-day .dot{font-size:9px;}
+
+  footer{text-align:center;font-size:11px;color:var(--sub);margin-top:20px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="day-nav">
+    <button class="navbtn" id="prevDay">‹</button>
+    <div class="center">
+      <h1 id="dayTitle">9월 14일 (월)</h1>
+      <span class="badge" id="todayBadge" style="display:none;">오늘</span>
+    </div>
+    <button class="navbtn" id="nextDay">›</button>
+    <button class="navbtn" id="alarmBtn" title="알림 켜기/끄기">🔕</button>
+  </div>
+
+  <div class="card">
+    <div class="progress-top">
+      <div class="cup-visual">
+        <svg viewBox="0 0 56 64">
+          <path d="M6 4 H50 L44 58 a6 6 0 0 1 -6 6 H18 a6 6 0 0 1 -6 -6 Z" fill="none" stroke="var(--blue)" stroke-width="3"/>
+          <clipPath id="cupclip">
+            <path d="M6 4 H50 L44 58 a6 6 0 0 1 -6 6 H18 a6 6 0 0 1 -6 -6 Z"/>
+          </clipPath>
+          <rect id="waterRect" x="0" y="64" width="56" height="0" fill="var(--blue)" clip-path="url(#cupclip)"/>
+        </svg>
+      </div>
+      <div class="progress-text">
+        <div class="big" id="totalMlText">0ml</div>
+        <div class="small" id="goalText">목표 1,500ml 중</div>
+      </div>
+    </div>
+    <div class="bar-outer"><div class="bar-inner" id="barInner" style="width:0%"></div></div>
+  </div>
+
+  <div class="card slots" id="slotsWrap"></div>
+
+
+  <div class="card">
+    <div class="cal-head">
+      <h2 id="calTitle">2026년 9월</h2>
+      <div class="nav">
+        <button id="prevMonth">‹</button>
+        <button id="nextMonth">›</button>
+      </div>
+    </div>
+    <div class="cal-summary" id="calSummary"></div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <footer>날짜를 눌러서 지난 기록도 고칠 수 있어요</footer>
+</div>
+
+<script>
+const SLOTS = [
+  {time:'10:00', label:'오전 1'},
+  {time:'11:30', label:'오전 2'},
+  {time:'14:00', label:'오후 1'},
+  {time:'16:30', label:'오후 2'},
+  {time:'18:00', label:'오후 3'}
+];
+const DEFAULT_ML = 355;
+const GOAL_ML = 1500;
+const PRESETS = [
+  {ml:355, label:'텀블러'},
+  {ml:500, label:'물병'},
+  {ml:240, label:'머그컵'}
+];
+const STORAGE_KEY = 'water-tracker-data-v2';
+const ALARM_KEY = 'water-tracker-alarm-on';
+
+function loadData(){
+  try{ return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch(e){ return {}; }
+}
+function saveData(data){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+function dateKey(d){
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function startOfDay(d){
+  const c = new Date(d);
+  c.setHours(0,0,0,0);
+  return c;
+}
+function todayDate(){ return startOfDay(new Date()); }
+function todayKey(){ return dateKey(todayDate()); }
+
+let data = loadData();
+let currentEditDate = todayDate();
+let viewMonth = todayDate();
+viewMonth.setDate(1);
+
+function getDayArr(key){
+  if(!data[key]) data[key] = SLOTS.map(()=>0);
+  return data[key];
+}
+
+function renderMain(){
+  const key = dateKey(currentEditDate);
+  const arr = getDayArr(key);
+  const isToday = key === todayKey();
+
+  document.getElementById('dayTitle').textContent =
+    currentEditDate.toLocaleDateString('ko-KR', { month:'long', day:'numeric', weekday:'short' });
+  document.getElementById('todayBadge').style.display = isToday ? 'inline-block' : 'none';
+  document.getElementById('nextDay').disabled = isToday;
+
+  const wrap = document.getElementById('slotsWrap');
+  wrap.innerHTML = '';
+  SLOTS.forEach((slot, i)=>{
+    const val = arr[i] || 0;
+    const div = document.createElement('div');
+    div.className = 'slot' + (val > 0 ? ' checked' : '');
+    const presetBtns = PRESETS.map(p =>
+      `<button data-i="${i}" data-ml="${p.ml}" class="${val === p.ml ? 'active' : ''}">${p.label} ${p.ml}</button>`
+    ).join('');
+    div.innerHTML = `
+      <div class="row1">
+        <button class="circle-btn" data-i="${i}"><span class="circle">✓</span></button>
+        <span class="label">
+          <div class="time">${slot.time}</div>
+          <div class="period">${slot.label}</div>
+        </span>
+        <span class="amount">
+          <input type="number" min="0" step="5" value="${val}" data-i="${i}">
+          <span>ml</span>
+        </span>
+      </div>
+      <div class="presets">${presetBtns}</div>`;
+    wrap.appendChild(div);
+  });
+
+  wrap.querySelectorAll('.circle-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i, 10);
+      const arr = getDayArr(dateKey(currentEditDate));
+      arr[i] = arr[i] > 0 ? 0 : DEFAULT_ML;
+      saveData(data);
+      renderMain();
+      renderCalendar();
+    });
+  });
+  wrap.querySelectorAll('.presets button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i, 10);
+      const ml = parseInt(btn.dataset.ml, 10);
+      const arr = getDayArr(dateKey(currentEditDate));
+      arr[i] = (arr[i] === ml) ? 0 : ml;
+      saveData(data);
+      renderMain();
+      renderCalendar();
+    });
+  });
+  wrap.querySelectorAll('input[type=number]').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const i = parseInt(inp.dataset.i, 10);
+      let v = parseInt(inp.value, 10);
+      if(isNaN(v) || v < 0) v = 0;
+      const arr = getDayArr(dateKey(currentEditDate));
+      arr[i] = v;
+      saveData(data);
+      renderMain();
+      renderCalendar();
+    });
+  });
+
+  const total = arr.reduce((a,b)=>a+(b||0),0);
+  document.getElementById('totalMlText').textContent = `${total.toLocaleString()}ml`;
+  document.getElementById('goalText').textContent = `목표 ${GOAL_ML.toLocaleString()}ml 중`;
+  const pct = Math.min(100, Math.round((total/GOAL_ML)*100));
+  document.getElementById('barInner').style.width = pct + '%';
+  const waterRect = document.getElementById('waterRect');
+  const fillH = Math.min(60, (total/GOAL_ML)*60);
+  waterRect.setAttribute('y', 64 - fillH);
+  waterRect.setAttribute('height', fillH);
+}
+
+function renderCalendar(){
+  const y = viewMonth.getFullYear();
+  const m = viewMonth.getMonth();
+  document.getElementById('calTitle').textContent = `${y}년 ${m+1}월`;
+
+  const firstDay = new Date(y, m, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  ['일','월','화','수','목','금','토'].forEach(d=>{
+    const el = document.createElement('div');
+    el.className = 'cal-dow';
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+  for(let i=0;i<startWeekday;i++){
+    const el = document.createElement('div');
+    el.className = 'cal-day empty';
+    grid.appendChild(el);
+  }
+  let successDays = 0;
+  const tKey = todayKey();
+  const selKey = dateKey(currentEditDate);
+  const tDate = todayDate();
+  for(let d=1; d<=daysInMonth; d++){
+    const dateObj = new Date(y, m, d);
+    const key = dateKey(dateObj);
+    const arr = data[key] || [];
+    const total = arr.reduce((a,b)=>a+(b||0),0);
+    const isFuture = dateObj > tDate;
+    const el = document.createElement('div');
+    let cls = 'cal-day';
+    if(total >= GOAL_ML){ cls += ' done'; successDays++; }
+    else if(total > 0){ cls += ' partial'; }
+    if(key === tKey) cls += ' today';
+    if(key === selKey) cls += ' selected';
+    if(!isFuture) cls += ' clickable';
+    el.className = cls;
+    const litersLabel = total > 0 ? `${(total/1000).toFixed(1)}L` : '';
+    el.innerHTML = `<div class="n">${d}</div>` + (litersLabel ? `<div class="dot">${litersLabel}</div>` : '');
+    if(!isFuture){
+      el.addEventListener('click', ()=>{
+        currentEditDate = startOfDay(dateObj);
+        renderMain();
+        renderCalendar();
+        document.querySelector('.day-nav').scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    }
+    grid.appendChild(el);
+  }
+  document.getElementById('calSummary').innerHTML =
+    `이번 달 목표 달성(${GOAL_ML.toLocaleString()}ml) <b>${successDays}일</b>`;
+}
+
+document.getElementById('prevDay').addEventListener('click', ()=>{
+  currentEditDate.setDate(currentEditDate.getDate()-1);
+  renderMain();
+  renderCalendar();
+});
+document.getElementById('nextDay').addEventListener('click', ()=>{
+  if(dateKey(currentEditDate) === todayKey()) return;
+  currentEditDate.setDate(currentEditDate.getDate()+1);
+  renderMain();
+  renderCalendar();
+});
+document.getElementById('prevMonth').addEventListener('click', ()=>{
+  viewMonth.setMonth(viewMonth.getMonth()-1);
+  renderCalendar();
+});
+document.getElementById('nextMonth').addEventListener('click', ()=>{
+  viewMonth.setMonth(viewMonth.getMonth()+1);
+  renderCalendar();
+});
+
+// --- Alarm (only fires while this page is open, always tied to real today/now) ---
+let notifiedToday = {};
+function loadNotifiedFlag(){
+  const key = todayKey() + '-notified';
+  try{ notifiedToday = JSON.parse(sessionStorage.getItem(key) || '{}'); }
+  catch(e){ notifiedToday = {}; }
+}
+function saveNotifiedFlag(){
+  sessionStorage.setItem(todayKey() + '-notified', JSON.stringify(notifiedToday));
+}
+loadNotifiedFlag();
+
+function updateAlarmUI(){
+  const on = localStorage.getItem(ALARM_KEY) === 'on' && Notification.permission === 'granted';
+  const btn = document.getElementById('alarmBtn');
+  btn.textContent = on ? '🔔' : '🔕';
+  btn.title = on ? '알림 켜짐 (탭하면 끄기)' : '알림 꺼짐 (탭하면 켜기)';
+}
+
+document.getElementById('alarmBtn').addEventListener('click', async ()=>{
+  const currentlyOn = localStorage.getItem(ALARM_KEY) === 'on';
+  if(currentlyOn){
+    localStorage.setItem(ALARM_KEY, 'off');
+    updateAlarmUI();
+    return;
+  }
+  if(!('Notification' in window)){
+    alert('이 브라우저는 알림 기능을 지원하지 않아요.');
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if(perm === 'granted'){
+    localStorage.setItem(ALARM_KEY, 'on');
+    new Notification('물마시기 알림 켜짐', { body: '10:00, 11:30, 14:00, 16:30, 18:00에 알려드릴게요. 페이지가 열려 있는 동안만 작동해요.' });
+  } else {
+    alert('알림 권한이 거부되었어요. 브라우저 설정에서 허용해주세요.');
+  }
+  updateAlarmUI();
+});
+
+function checkAlarmTick(){
+  const on = localStorage.getItem(ALARM_KEY) === 'on';
+  if(!on || Notification.permission !== 'granted') return;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const cur = `${hh}:${mm}`;
+  SLOTS.forEach((slot, i)=>{
+    if(slot.time === cur && !notifiedToday[i]){
+      notifiedToday[i] = true;
+      saveNotifiedFlag();
+      new Notification('💧 물 마실 시간이에요', { body: `${slot.label} 텀블러 한 잔 어때요?` });
+    }
+  });
+}
+
+setInterval(checkAlarmTick, 20000);
+updateAlarmUI();
+renderMain();
+renderCalendar();
+</script>
+</body>
+</html>
