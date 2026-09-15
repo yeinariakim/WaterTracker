@@ -317,6 +317,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 // ↓↓↓ Firebase 콘솔에서 복사한 본인 설정값으로 반드시 교체하세요 ↓↓↓
 const firebaseConfig = {
@@ -331,6 +332,28 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 try{ db.enablePersistence({ synchronizeTabs: true }); }catch(e){}
+
+const VAPID_KEY = 'BIcHAsCzHyNORu6qSvPwCbxVK_nlNjeP0MFe4n0Yf3_6ioGKU11Jx7wOqwgbeYyaEAUNCsYLpysVU0OdAF76gJU';
+let messaging = null;
+try{ messaging = firebase.messaging(); }catch(e){ console.warn('messaging not supported', e); }
+
+async function setupPushNotifications(uid){
+  if(!messaging || !('serviceWorker' in navigator)) return;
+  try{
+    const reg = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+    const permission = await Notification.requestPermission();
+    if(permission !== 'granted') return;
+    const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if(token){
+      await db.collection('users').doc(uid).set(
+        { fcmTokens: firebase.firestore.FieldValue.arrayUnion(token) },
+        { merge: true }
+      );
+    }
+  }catch(e){
+    console.warn('push setup failed', e);
+  }
+}
 
 let currentUser = null;
 let cloudUnsub = null;
@@ -785,6 +808,7 @@ auth.onAuthStateChanged(user=>{
     showAuthOverlay(false);
     document.getElementById('authError').textContent = '';
     startCloudSync(user.uid);
+    setupPushNotifications(user.uid);
   } else {
     if(cloudUnsub){ cloudUnsub(); cloudUnsub = null; }
     showAuthOverlay(true);
