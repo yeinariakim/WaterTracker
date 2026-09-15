@@ -344,20 +344,21 @@ async function setupPushNotifications(uid){
   }
   try{
     const reg = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-    const permission = await Notification.requestPermission();
-    if(permission !== 'granted'){
-      alert('알림 권한 상태: ' + permission + ' (허용이 아니라서 토큰을 못 받아요)');
-      return;
+    let permission = Notification.permission;
+    if(permission === 'default'){
+      permission = await Notification.requestPermission();
     }
+    // 참고: 아이폰 사파리는 실제로는 허용돼 있어도 'denied'를 잘못 반환하는 버그가 있어서,
+    // denied여도 일단 토큰 발급을 시도해봐요.
     const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if(token){
       await db.collection('users').doc(uid).set(
         { fcmTokens: firebase.firestore.FieldValue.arrayUnion(token) },
         { merge: true }
       );
-      alert('토큰 저장 완료: ' + token.slice(0, 16) + '...');
+      alert('토큰 저장 완료: ' + token.slice(0, 16) + '... (권한 상태: ' + permission + ')');
     } else {
-      alert('토큰이 비어있어요 (getToken이 빈 값을 반환)');
+      alert('토큰이 비어있어요 (권한 상태: ' + permission + ')');
     }
   }catch(e){
     alert('푸시 설정 에러: ' + (e && e.message ? e.message : e));
