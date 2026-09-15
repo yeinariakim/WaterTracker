@@ -116,8 +116,12 @@
     background:var(--blue);border-color:var(--blue);color:#fff;
   }
   .slot .label{flex:1;min-width:0;}
-  .slot .label .time{font-weight:700;font-size:14px;}
+  .slot .label input.time-input{
+    -webkit-appearance:none;appearance:none;border:none;background:transparent;
+    font-weight:700;font-size:14px;color:var(--ink);padding:0;width:70px;font-family:inherit;
+  }
   .slot .label .period{font-size:12px;color:var(--sub);margin-top:1px;}
+  .slot.extra .label .period{font-style:italic;}
   .slot .amount{
     display:flex;align-items:center;gap:4px;flex-shrink:0;
   }
@@ -138,6 +142,27 @@
   }
   .slot .presets button.active{
     color:var(--blue);border-color:var(--blue-mid);background:var(--blue-light);font-weight:600;
+  }
+  .slot .del-btn{
+    width:24px;height:24px;flex-shrink:0;
+    -webkit-appearance:none;appearance:none;border:none;cursor:pointer;
+    background:transparent;color:var(--sub);font-size:15px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .slot .skip-btn{
+    width:16px;height:16px;flex-shrink:0;margin-left:2px;
+    -webkit-appearance:none;appearance:none;border:none;cursor:pointer;
+    background:transparent;color:var(--sub);font-size:11px;opacity:.35;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .hidden-bar{
+    font-size:11px;color:var(--sub);text-align:center;padding:8px 0 0;cursor:pointer;
+  }
+
+  .add-extra-btn{
+    -webkit-appearance:none;appearance:none;width:100%;margin-top:10px;
+    border:1px dashed var(--line);background:transparent;color:var(--blue);
+    font-size:13px;font-weight:600;padding:10px;border-radius:12px;cursor:pointer;
   }
 
   .alarm-status{
@@ -215,8 +240,11 @@
     <div class="bar-outer"><div class="bar-inner" id="barInner" style="width:0%"></div></div>
   </div>
 
-  <div class="card slots" id="slotsWrap"></div>
-
+  <div class="card">
+    <div class="slots" id="slotsWrap"></div>
+    <div class="hidden-bar" id="hiddenBar" style="display:none;"></div>
+    <button class="add-extra-btn" id="addExtraBtn">+ 잔 추가</button>
+  </div>
 
   <div class="card">
     <div class="cal-head">
@@ -234,15 +262,32 @@
 </div>
 
 <script>
-const SLOTS = [
-  {time:'10:00', label:'오전 1'},
-  {time:'11:30', label:'오전 2'},
-  {time:'14:00', label:'오후 1'},
-  {time:'16:30', label:'오후 2'},
-  {time:'18:00', label:'오후 3'}
-];
-const DEFAULT_ML = 355;
+const SETTINGS_KEY = 'water-tracker-settings-v1';
+const DEFAULT_SLOT_TIMES = ['10:00','11:30','14:00','16:30','18:00'];
+
+function loadSettings(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    if(s && Array.isArray(s.slotTimes) && s.slotTimes.length > 0) return s;
+  }catch(e){}
+  return { slotTimes: DEFAULT_SLOT_TIMES.slice() };
+}
+function saveSettings(){
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+let settings = loadSettings();
+
+function computeLabels(times){
+  let am = 0, pm = 0;
+  return times.map(t=>{
+    const hh = parseInt((t||'0:0').split(':')[0], 10);
+    if(hh < 12){ am++; return `오전 ${am}`; }
+    pm++; return `오후 ${pm}`;
+  });
+}
+
 const GOAL_ML = 1500;
+const DEFAULT_ML = 355;
 const PRESETS = [
   {ml:355, label:'텀블러'},
   {ml:500, label:'물병'},
@@ -275,14 +320,32 @@ let currentEditDate = todayDate();
 let viewMonth = todayDate();
 viewMonth.setDate(1);
 
-function getDayArr(key){
-  if(!data[key]) data[key] = SLOTS.map(()=>0);
-  return data[key];
+function getDayObj(key){
+  let d = data[key];
+  if(!d){
+    d = { slots: settings.slotTimes.map(()=>0), extras: [], hidden: [] };
+    data[key] = d;
+  } else if(Array.isArray(d)){
+    // migrate from old format (plain array)
+    d = { slots: d, extras: [], hidden: [] };
+    data[key] = d;
+  }
+  if(!Array.isArray(d.slots)) d.slots = [];
+  if(!Array.isArray(d.extras)) d.extras = [];
+  if(!Array.isArray(d.hidden)) d.hidden = [];
+  while(d.slots.length < settings.slotTimes.length) d.slots.push(0);
+  return d;
+}
+let extraIdCounter = 1;
+function newExtraId(){ return 'x' + (Date.now()) + '-' + (extraIdCounter++); }
+function nowHHMM(){
+  const n = new Date();
+  return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
 }
 
 function renderMain(){
   const key = dateKey(currentEditDate);
-  const arr = getDayArr(key);
+  const dayObj = getDayObj(key);
   const isToday = key === todayKey();
 
   document.getElementById('dayTitle').textContent =
@@ -291,36 +354,97 @@ function renderMain(){
   document.getElementById('nextDay').disabled = isToday;
   document.getElementById('todayJumpBtn').disabled = isToday;
 
+  const labels = computeLabels(settings.slotTimes);
+
+  // --- build combined, time-sorted list of scheduled slots + extras ---
+  const scheduled = settings.slotTimes
+    .map((time, i)=>({ kind:'slot', key:String(i), time, ml: dayObj.slots[i] || 0, label: labels[i] }))
+    .filter((_, i)=> !dayObj.hidden.includes(i));
+  const extras = dayObj.extras.map(e=>({
+    kind:'extra', key:e.id, time: e.time || '00:00', ml: e.ml || 0, label:'추가'
+  }));
+  const combined = scheduled.concat(extras).sort((a,b)=> (a.time || '').localeCompare(b.time || ''));
+
   const wrap = document.getElementById('slotsWrap');
   wrap.innerHTML = '';
-  SLOTS.forEach((slot, i)=>{
-    const val = arr[i] || 0;
+  combined.forEach(entry=>{
+    const val = entry.ml;
     const div = document.createElement('div');
-    div.className = 'slot' + (val > 0 ? ' checked' : '');
+    div.className = 'slot' + (val > 0 ? ' checked' : '') + (entry.kind === 'extra' ? ' extra' : '');
     const presetBtns = PRESETS.map(p =>
-      `<button data-i="${i}" data-ml="${p.ml}" class="${val === p.ml ? 'active' : ''}">${p.label} ${p.ml}</button>`
+      `<button data-kind="${entry.kind}" data-key="${entry.key}" data-ml="${p.ml}" class="${val === p.ml ? 'active' : ''}">${p.label} ${p.ml}</button>`
     ).join('');
+    const iconBtn = entry.kind === 'slot'
+      ? `<button class="circle-btn" data-kind="slot" data-key="${entry.key}"><span class="circle">✓</span></button>`
+      : `<button class="del-btn" data-kind="extra" data-key="${entry.key}" title="삭제">✕</button>`;
+    const skipBtn = entry.kind === 'slot'
+      ? `<button class="skip-btn" data-kind="slot" data-key="${entry.key}" title="오늘은 건너뛰기">×</button>`
+      : '';
     div.innerHTML = `
       <div class="row1">
-        <button class="circle-btn" data-i="${i}"><span class="circle">✓</span></button>
+        ${iconBtn}
         <span class="label">
-          <div class="time">${slot.time}</div>
-          <div class="period">${slot.label}</div>
+          <input type="time" class="time-input" value="${entry.time}" data-kind="${entry.kind}" data-key="${entry.key}">
         </span>
         <span class="amount">
-          <input type="number" min="0" step="5" value="${val}" data-i="${i}">
+          <input type="number" min="0" step="5" value="${val}" data-kind="${entry.kind}" data-key="${entry.key}">
           <span>ml</span>
         </span>
+        ${skipBtn}
       </div>
       <div class="presets">${presetBtns}</div>`;
     wrap.appendChild(div);
   });
+  wrap.querySelectorAll('.skip-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.key, 10);
+      if(!dayObj.hidden.includes(i)) dayObj.hidden.push(i);
+      saveData(data);
+      renderMain();
+      renderCalendar();
+    });
+  });
+  const hiddenBar = document.getElementById('hiddenBar');
+  if(dayObj.hidden.length > 0){
+    hiddenBar.style.display = 'block';
+    hiddenBar.textContent = `오늘 건너뛴 시간 ${dayObj.hidden.length}개 다시 보기`;
+    hiddenBar.onclick = ()=>{
+      dayObj.hidden = [];
+      saveData(data);
+      renderMain();
+      renderCalendar();
+    };
+  } else {
+    hiddenBar.style.display = 'none';
+  }
+
+  function setMl(kind, key, ml){
+    if(kind === 'slot') dayObj.slots[parseInt(key,10)] = ml;
+    else{
+      const ex = dayObj.extras.find(e=>e.id === key);
+      if(ex) ex.ml = ml;
+    }
+  }
+  function getMl(kind, key){
+    if(kind === 'slot') return dayObj.slots[parseInt(key,10)] || 0;
+    const ex = dayObj.extras.find(e=>e.id === key);
+    return ex ? (ex.ml||0) : 0;
+  }
 
   wrap.querySelectorAll('.circle-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      const i = parseInt(btn.dataset.i, 10);
-      const arr = getDayArr(dateKey(currentEditDate));
-      arr[i] = arr[i] > 0 ? 0 : DEFAULT_ML;
+      const { kind, key } = btn.dataset;
+      const cur = getMl(kind, key);
+      setMl(kind, key, cur > 0 ? 0 : DEFAULT_ML);
+      saveData(data);
+      renderMain();
+      renderCalendar();
+    });
+  });
+  wrap.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const { key } = btn.dataset;
+      dayObj.extras = dayObj.extras.filter(e=>e.id !== key);
       saveData(data);
       renderMain();
       renderCalendar();
@@ -328,29 +452,42 @@ function renderMain(){
   });
   wrap.querySelectorAll('.presets button').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      const i = parseInt(btn.dataset.i, 10);
+      const { kind, key } = btn.dataset;
       const ml = parseInt(btn.dataset.ml, 10);
-      const arr = getDayArr(dateKey(currentEditDate));
-      arr[i] = (arr[i] === ml) ? 0 : ml;
+      const cur = getMl(kind, key);
+      setMl(kind, key, cur === ml ? 0 : ml);
       saveData(data);
       renderMain();
       renderCalendar();
     });
   });
-  wrap.querySelectorAll('input[type=number]').forEach(inp=>{
+  wrap.querySelectorAll('.amount input[type=number]').forEach(inp=>{
     inp.addEventListener('change', ()=>{
-      const i = parseInt(inp.dataset.i, 10);
+      const { kind, key } = inp.dataset;
       let v = parseInt(inp.value, 10);
       if(isNaN(v) || v < 0) v = 0;
-      const arr = getDayArr(dateKey(currentEditDate));
-      arr[i] = v;
+      setMl(kind, key, v);
       saveData(data);
       renderMain();
       renderCalendar();
+    });
+  });
+  wrap.querySelectorAll('input[type=time]').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const { kind, key } = inp.dataset;
+      if(!inp.value) return;
+      if(kind === 'slot'){
+        settings.slotTimes[parseInt(key,10)] = inp.value;
+        saveSettings();
+      } else {
+        const ex = dayObj.extras.find(e=>e.id === key);
+        if(ex){ ex.time = inp.value; saveData(data); }
+      }
+      renderMain();
     });
   });
 
-  const total = arr.reduce((a,b)=>a+(b||0),0);
+  const total = dayObj.slots.reduce((a,b)=>a+(b||0),0) + dayObj.extras.reduce((a,e)=>a+(e.ml||0),0);
   document.getElementById('totalMlText').textContent = `${total.toLocaleString()}ml`;
   document.getElementById('goalText').textContent = `목표 ${GOAL_ML.toLocaleString()}ml 중`;
   const pct = Math.min(100, Math.round((total/GOAL_ML)*100));
@@ -360,6 +497,14 @@ function renderMain(){
   waterRect.setAttribute('y', 64 - fillH);
   waterRect.setAttribute('height', fillH);
 }
+
+document.getElementById('addExtraBtn').addEventListener('click', ()=>{
+  const d = getDayObj(dateKey(currentEditDate));
+  d.extras.push({ id: newExtraId(), time: nowHHMM(), ml: DEFAULT_ML });
+  saveData(data);
+  renderMain();
+  renderCalendar();
+});
 
 function renderCalendar(){
   const y = viewMonth.getFullYear();
@@ -390,8 +535,12 @@ function renderCalendar(){
   for(let d=1; d<=daysInMonth; d++){
     const dateObj = new Date(y, m, d);
     const key = dateKey(dateObj);
-    const arr = data[key] || [];
-    const total = arr.reduce((a,b)=>a+(b||0),0);
+    const dObj = data[key];
+    let total = 0;
+    if(dObj){
+      if(Array.isArray(dObj)) total = dObj.reduce((a,b)=>a+(b||0),0);
+      else total = (dObj.slots||[]).reduce((a,b)=>a+(b||0),0) + (dObj.extras||[]).reduce((a,e)=>a+(e.ml||0),0);
+    }
     const isFuture = dateObj > tDate;
     const el = document.createElement('div');
     let cls = 'cal-day';
@@ -491,11 +640,12 @@ function checkAlarmTick(){
   const hh = String(now.getHours()).padStart(2,'0');
   const mm = String(now.getMinutes()).padStart(2,'0');
   const cur = `${hh}:${mm}`;
-  SLOTS.forEach((slot, i)=>{
-    if(slot.time === cur && !notifiedToday[i]){
+  const labels = computeLabels(settings.slotTimes);
+  settings.slotTimes.forEach((time, i)=>{
+    if(time === cur && !notifiedToday[i]){
       notifiedToday[i] = true;
       saveNotifiedFlag();
-      new Notification('💧 물 마실 시간이에요', { body: `${slot.label} 텀블러 한 잔 어때요?` });
+      new Notification('💧 물 마실 시간이에요', { body: `${labels[i]}잔 마실 시간이에요` });
     }
   });
 }
