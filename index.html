@@ -240,6 +240,7 @@
     font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;
   }
   .auth-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .auth-btn.link{border:none;background:transparent;color:var(--sub);font-weight:400;font-size:12px;margin-bottom:0;}
 </style>
 </head>
 <body>
@@ -253,6 +254,7 @@
     <p class="auth-error" id="authError"></p>
     <button class="auth-btn primary" id="loginBtn">로그인</button>
     <button class="auth-btn" id="signupBtn">처음이에요, 계정 만들기</button>
+    <button class="auth-btn link" id="forgotBtn">비밀번호를 잊으셨나요?</button>
   </div>
 </div>
 <div class="wrap">
@@ -803,6 +805,21 @@ document.getElementById('signupBtn').addEventListener('click', ()=>{
   document.getElementById('authError').textContent = '';
   auth.createUserWithEmailAndPassword(email, pw).catch(e=>{
     document.getElementById('authError').textContent = translateAuthError(e);
+  });
+});
+document.getElementById('forgotBtn').addEventListener('click', ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  const errEl = document.getElementById('authError');
+  if(!email){
+    errEl.textContent = '이메일을 먼저 입력해주세요.';
+    return;
+  }
+  auth.sendPasswordResetEmail(email).then(()=>{
+    errEl.style.color = 'var(--green)';
+    errEl.textContent = '재설정 메일을 보냈어요. 메일함을 확인해주세요.';
+  }).catch(e=>{
+    errEl.style.color = '';
+    errEl.textContent = translateAuthError(e);
   });
 });
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
