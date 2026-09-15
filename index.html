@@ -218,9 +218,21 @@
 
   .auth-overlay{
     position:fixed;inset:0;background:var(--bg);
-    display:flex;align-items:center;justify-content:center;
+    display:none;align-items:center;justify-content:center;
     padding:20px;z-index:1000;
   }
+  .auth-overlay.show{display:flex;}
+  .loading-overlay{
+    position:fixed;inset:0;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;
+    z-index:1001;
+  }
+  .loading-overlay .spinner{
+    width:28px;height:28px;border-radius:50%;
+    border:3px solid var(--blue-mid);border-top-color:var(--blue);
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
   .auth-card{
     width:100%;max-width:340px;background:var(--card);border:1px solid var(--line);
     border-radius:16px;padding:26px 22px;text-align:center;
@@ -244,6 +256,7 @@
 </style>
 </head>
 <body>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
 <div class="auth-overlay" id="authOverlay">
   <div class="auth-card">
     <div class="auth-icon">💧</div>
@@ -338,10 +351,7 @@ let messaging = null;
 try{ messaging = firebase.messaging(); }catch(e){ console.warn('messaging not supported', e); }
 
 async function setupPushNotifications(uid){
-  if(!messaging || !('serviceWorker' in navigator)){
-    alert('이 브라우저는 푸시를 지원 안 해요 (messaging 없음 또는 serviceWorker 미지원)');
-    return;
-  }
+  if(!messaging || !('serviceWorker' in navigator)) return;
   try{
     const reg = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
     let permission = Notification.permission;
@@ -356,12 +366,9 @@ async function setupPushNotifications(uid){
         { fcmTokens: firebase.firestore.FieldValue.arrayUnion(token) },
         { merge: true }
       );
-      alert('토큰 저장 완료: ' + token.slice(0, 16) + '... (권한 상태: ' + permission + ')');
-    } else {
-      alert('토큰이 비어있어요 (권한 상태: ' + permission + ')');
     }
   }catch(e){
-    alert('푸시 설정 에러: ' + (e && e.message ? e.message : e));
+    console.warn('push setup failed', e);
   }
 }
 
@@ -770,7 +777,11 @@ renderCalendar();
 
 // --- Firebase auth + realtime cloud sync ---
 function showAuthOverlay(show){
-  document.getElementById('authOverlay').style.display = show ? 'flex' : 'none';
+  document.getElementById('authOverlay').classList.toggle('show', show);
+}
+function hideLoadingOverlay(){
+  const el = document.getElementById('loadingOverlay');
+  if(el) el.style.display = 'none';
 }
 function setAccountBar(user){
   const bar = document.getElementById('accountBar');
@@ -812,6 +823,7 @@ function translateAuthError(e){
 }
 
 auth.onAuthStateChanged(user=>{
+  hideLoadingOverlay();
   currentUser = user;
   setAccountBar(user);
   if(user){
