@@ -206,9 +206,55 @@
   .cal-day .dot{font-size:9px;}
 
   footer{text-align:center;font-size:11px;color:var(--sub);margin-top:20px;}
+
+  .account-bar{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    font-size:12px;color:var(--sub);margin-top:16px;
+  }
+  .account-bar button{
+    -webkit-appearance:none;appearance:none;border:none;background:transparent;
+    color:var(--blue);font-size:12px;font-weight:600;cursor:pointer;padding:0;
+  }
+
+  .auth-overlay{
+    position:fixed;inset:0;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;z-index:1000;
+  }
+  .auth-card{
+    width:100%;max-width:340px;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:26px 22px;text-align:center;
+  }
+  .auth-icon{font-size:34px;margin-bottom:6px;}
+  .auth-card h2{font-size:17px;margin:0 0 6px;}
+  .auth-sub{font-size:12px;color:var(--sub);margin:0 0 18px;line-height:1.5;}
+  .auth-card input{
+    -webkit-appearance:none;appearance:none;width:100%;
+    padding:11px 12px;margin-bottom:10px;border:1px solid var(--line);border-radius:10px;
+    background:var(--bg);color:var(--ink);font-size:14px;font-family:inherit;
+  }
+  .auth-error{font-size:12px;color:#d9534f;min-height:16px;margin:0 0 8px;}
+  .auth-btn{
+    -webkit-appearance:none;appearance:none;width:100%;padding:11px;border-radius:10px;
+    border:1px solid var(--line);background:var(--card);color:var(--ink);
+    font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit;
+  }
+  .auth-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;}
 </style>
 </head>
 <body>
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <div class="auth-icon">💧</div>
+    <h2>물마시기 로그인</h2>
+    <p class="auth-sub">이메일로 로그인하면 다른 기기에서도 같은 기록을 볼 수 있어요.</p>
+    <input type="email" id="authEmail" placeholder="이메일" autocomplete="email">
+    <input type="password" id="authPassword" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">
+    <p class="auth-error" id="authError"></p>
+    <button class="auth-btn primary" id="loginBtn">로그인</button>
+    <button class="auth-btn" id="signupBtn">처음이에요, 계정 만들기</button>
+  </div>
+</div>
 <div class="wrap">
   <div class="day-nav">
     <button class="navbtn" id="prevDay">‹</button>
@@ -258,10 +304,35 @@
     <div class="cal-grid" id="calGrid"></div>
   </div>
 
+  <div class="account-bar" id="accountBar" style="display:none;">
+    <span id="accountEmail"></span>
+    <button id="logoutBtn">로그아웃</button>
+  </div>
+
   <footer>날짜를 눌러서 지난 기록도 고칠 수 있어요</footer>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
+// ↓↓↓ Firebase 콘솔에서 복사한 본인 설정값으로 반드시 교체하세요 ↓↓↓
+const firebaseConfig = {
+  apiKey: "AIzaSyDr4oe97AD-L9QeBQ6epPG9Pa4Bo64ArGA",
+  authDomain: "waterttracker.firebaseapp.com",
+  projectId: "waterttracker",
+  storageBucket: "waterttracker.firebasestorage.app",
+  messagingSenderId: "386879740854",
+  appId: "1:386879740854:web:5d07d48a1f0d22b5c4bf17"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+try{ db.enablePersistence({ synchronizeTabs: true }); }catch(e){}
+
+let currentUser = null;
+let cloudUnsub = null;
+let applyingRemote = false; // true while we're writing data that came FROM the cloud, to avoid re-echoing it back up
 const SETTINGS_KEY = 'water-tracker-settings-v1';
 const DEFAULT_SLOT_TIMES = ['10:00','11:30','14:00','16:30','18:00'];
 
@@ -274,6 +345,7 @@ function loadSettings(){
 }
 function saveSettings(){
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  pushToCloud();
 }
 let settings = loadSettings();
 
@@ -302,6 +374,12 @@ function loadData(){
 }
 function saveData(data){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  pushToCloud();
+}
+function pushToCloud(){
+  if(!currentUser || applyingRemote) return;
+  db.collection('users').doc(currentUser.uid).set({ data, settings })
+    .catch(e=>console.warn('cloud save failed', e));
 }
 function dateKey(d){
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
@@ -654,6 +732,83 @@ setInterval(checkAlarmTick, 20000);
 updateAlarmUI();
 renderMain();
 renderCalendar();
+
+// --- Firebase auth + realtime cloud sync ---
+function showAuthOverlay(show){
+  document.getElementById('authOverlay').style.display = show ? 'flex' : 'none';
+}
+function setAccountBar(user){
+  const bar = document.getElementById('accountBar');
+  if(user){
+    bar.style.display = 'flex';
+    document.getElementById('accountEmail').textContent = user.email;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+function startCloudSync(uid){
+  if(cloudUnsub) cloudUnsub();
+  cloudUnsub = db.collection('users').doc(uid).onSnapshot(doc=>{
+    if(doc.exists){
+      const remote = doc.data();
+      applyingRemote = true;
+      if(remote.data) data = remote.data;
+      if(remote.settings && Array.isArray(remote.settings.slotTimes)) settings = remote.settings;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      renderMain();
+      renderCalendar();
+      applyingRemote = false;
+    } else {
+      // first login on this account: push whatever we have locally up as the initial cloud copy
+      pushToCloud();
+    }
+  }, err=>{
+    console.warn('cloud sync error', err);
+  });
+}
+function translateAuthError(e){
+  const code = e.code || '';
+  if(code.includes('email-already-in-use')) return '이미 가입된 이메일이에요. 로그인을 눌러주세요.';
+  if(code.includes('invalid-email')) return '이메일 형식이 올바르지 않아요.';
+  if(code.includes('weak-password')) return '비밀번호는 6자 이상이어야 해요.';
+  if(code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential')) return '이메일 또는 비밀번호가 맞지 않아요.';
+  return '오류가 발생했어요: ' + (e.message || code);
+}
+
+auth.onAuthStateChanged(user=>{
+  currentUser = user;
+  setAccountBar(user);
+  if(user){
+    showAuthOverlay(false);
+    document.getElementById('authError').textContent = '';
+    startCloudSync(user.uid);
+  } else {
+    if(cloudUnsub){ cloudUnsub(); cloudUnsub = null; }
+    showAuthOverlay(true);
+  }
+});
+
+document.getElementById('loginBtn').addEventListener('click', ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  const pw = document.getElementById('authPassword').value;
+  document.getElementById('authError').textContent = '';
+  auth.signInWithEmailAndPassword(email, pw).catch(e=>{
+    document.getElementById('authError').textContent = translateAuthError(e);
+  });
+});
+document.getElementById('signupBtn').addEventListener('click', ()=>{
+  const email = document.getElementById('authEmail').value.trim();
+  const pw = document.getElementById('authPassword').value;
+  document.getElementById('authError').textContent = '';
+  auth.createUserWithEmailAndPassword(email, pw).catch(e=>{
+    document.getElementById('authError').textContent = translateAuthError(e);
+  });
+});
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  auth.signOut();
+});
+
 </script>
 </body>
 </html>
