@@ -449,16 +449,17 @@ viewMonth.setDate(1);
 function getDayObj(key){
   let d = data[key];
   if(!d){
-    d = { slots: settings.slotTimes.map(()=>0), extras: [], hidden: [] };
+    d = { slots: settings.slotTimes.map(()=>0), extras: [], hidden: [], goal: settings.goalMl };
     data[key] = d;
   } else if(Array.isArray(d)){
-    // migrate from old format (plain array)
-    d = { slots: d, extras: [], hidden: [] };
+    // migrate from old format (plain array) — this predates per-day goals, so it used the old fixed 1500 default
+    d = { slots: d, extras: [], hidden: [], goal: 1500 };
     data[key] = d;
   }
   if(!Array.isArray(d.slots)) d.slots = [];
   if(!Array.isArray(d.extras)) d.extras = [];
   if(!Array.isArray(d.hidden)) d.hidden = [];
+  if(typeof d.goal !== 'number' || d.goal <= 0) d.goal = 1500; // day recorded before per-day goals existed
   while(d.slots.length < settings.slotTimes.length) d.slots.push(0);
   return d;
 }
@@ -474,15 +475,20 @@ function totalForKey(key){
   if(Array.isArray(dObj)) return dObj.reduce((a,b)=>a+(b||0),0);
   return (dObj.slots||[]).reduce((a,b)=>a+(b||0),0) + (dObj.extras||[]).reduce((a,e)=>a+(e.ml||0),0);
 }
+function goalForKey(key){
+  const dObj = data[key];
+  if(dObj && !Array.isArray(dObj) && typeof dObj.goal === 'number' && dObj.goal > 0) return dObj.goal;
+  return 1500; // never visited, or recorded before per-day goals existed
+}
 function computeStreak(){
   let streak = 0;
   let d = todayDate();
-  if(totalForKey(dateKey(d)) < settings.goalMl){
+  if(totalForKey(dateKey(d)) < goalForKey(dateKey(d))){
     d.setDate(d.getDate() - 1); // 오늘이 아직 미달성이면 오늘은 빼고 어제부터 셈
   }
   while(true){
     const key = dateKey(d);
-    if(totalForKey(key) >= settings.goalMl){
+    if(totalForKey(key) >= goalForKey(key)){
       streak++;
       d.setDate(d.getDate() - 1);
     } else break;
@@ -637,11 +643,11 @@ function renderMain(){
   const total = dayObj.slots.reduce((a,b)=>a+(b||0),0) + dayObj.extras.reduce((a,e)=>a+(e.ml||0),0);
   document.getElementById('totalMlText').textContent = `${total.toLocaleString()}ml`;
   const goalInput = document.getElementById('goalInput');
-  if(document.activeElement !== goalInput) goalInput.value = settings.goalMl;
-  const pct = Math.min(100, Math.round((total/settings.goalMl)*100));
+  if(document.activeElement !== goalInput) goalInput.value = dayObj.goal;
+  const pct = Math.min(100, Math.round((total/dayObj.goal)*100));
   document.getElementById('barInner').style.width = pct + '%';
   const waterRect = document.getElementById('waterRect');
-  const fillH = Math.min(60, (total/settings.goalMl)*60);
+  const fillH = Math.min(60, (total/dayObj.goal)*60);
   waterRect.setAttribute('y', 64 - fillH);
   waterRect.setAttribute('height', fillH);
 
@@ -659,8 +665,13 @@ document.getElementById('addExtraBtn').addEventListener('click', ()=>{
 document.getElementById('goalInput').addEventListener('change', (e)=>{
   let v = parseInt(e.target.value, 10);
   if(isNaN(v) || v < 100) v = 1500;
-  settings.goalMl = v;
-  saveSettings();
+  const dayObj = getDayObj(dateKey(currentEditDate));
+  dayObj.goal = v;
+  if(dateKey(currentEditDate) === todayKey()){
+    settings.goalMl = v; // 오늘 목표를 바꾸면, 앞으로 새로 생기는 날들의 기본값도 이걸로
+    saveSettings();
+  }
+  saveData(data);
   renderMain();
   renderCalendar();
 });
@@ -695,10 +706,11 @@ function renderCalendar(){
     const dateObj = new Date(y, m, d);
     const key = dateKey(dateObj);
     const total = totalForKey(key);
+    const goal = goalForKey(key);
     const isFuture = dateObj > tDate;
     const el = document.createElement('div');
     let cls = 'cal-day';
-    if(total >= settings.goalMl){ cls += ' done'; successDays++; }
+    if(total >= goal){ cls += ' done'; successDays++; }
     else if(total > 0){ cls += ' partial'; }
     if(key === tKey) cls += ' today';
     if(key === selKey) cls += ' selected';
@@ -717,7 +729,7 @@ function renderCalendar(){
     grid.appendChild(el);
   }
   document.getElementById('calSummary').innerHTML =
-    `이번 달 목표 달성(${settings.goalMl.toLocaleString()}ml) <b>${successDays}일</b>`;
+    `이번 달 목표 달성 <b>${successDays}일</b>`;
 }
 
 document.getElementById('prevDay').addEventListener('click', ()=>{
@@ -782,7 +794,10 @@ function applyRemoteSnapshot(remote){
   }
   applyingRemote = true;
   if(remote.data) data = remote.data;
-  if(remote.settings && Array.isArray(remote.settings.slotTimes)) settings = remote.settings;
+  if(remote.settings && Array.isArray(remote.settings.slotTimes)){
+    settings = remote.settings;
+    if(typeof settings.goalMl !== 'number' || settings.goalMl <= 0) settings.goalMl = 1500;
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   renderMain();
