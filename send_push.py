@@ -12,7 +12,7 @@ messages_map = {
     '0 1 * * 1-5':  '💧',
     '30 2 * * 1-5': '💧💧',
     '0 5 * * 1-5':  '💧💧💧',
-    '30 7 * * 1-5': '💧💧💧💧',
+    '0 7 * * 1-5':  '💧💧💧💧',
     '0 9 * * 1-5':  '💧💧💧💧💧',
     '0 2 * * 0,6':  '💧',
     '0 5 * * 0,6':  '💧',
@@ -31,7 +31,7 @@ print(f'sending to {len(tokens)} token(s)')
 for t in tokens:
     try:
         msg = messaging.Message(
-            notification=messaging.Notification(title='💧 물마시기 알림', body=body),
+            notification=messaging.Notification(title=body),
             token=t,
         )
         messaging.send(msg)
