@@ -83,6 +83,13 @@
   .progress-text{flex:1;}
   .progress-text .big{font-size:22px;font-weight:700;}
   .progress-text .small{font-size:13px;color:var(--sub);margin-top:2px;}
+  .goal-input{
+    -webkit-appearance:none;appearance:none;
+    width:52px;text-align:center;font-size:13px;font-weight:600;color:var(--ink);
+    background:var(--bg);border:1px solid var(--line);border-radius:6px;
+    padding:2px 4px;margin:0 3px;font-family:inherit;
+  }
+  .streak{font-size:12px;color:var(--amber);margin-top:4px;font-weight:600;}
   .bar-outer{
     margin-top:14px;height:10px;border-radius:6px;background:var(--blue-light);overflow:hidden;
   }
@@ -120,8 +127,6 @@
     -webkit-appearance:none;appearance:none;border:none;background:transparent;
     font-weight:700;font-size:14px;color:var(--ink);padding:0;width:70px;font-family:inherit;
   }
-  .slot .label .period{font-size:12px;color:var(--sub);margin-top:1px;}
-  .slot.extra .label .period{font-style:italic;}
   .slot .amount{
     display:flex;align-items:center;gap:4px;flex-shrink:0;
   }
@@ -279,7 +284,6 @@
     </div>
     <button class="navbtn" id="nextDay">›</button>
     <button class="navbtn text" id="todayJumpBtn" title="오늘로 이동">오늘</button>
-    <button class="navbtn" id="alarmBtn" title="알림 켜기/끄기">🔕</button>
   </div>
 
   <div class="card">
@@ -295,7 +299,8 @@
       </div>
       <div class="progress-text">
         <div class="big" id="totalMlText">0ml</div>
-        <div class="small" id="goalText">목표 1,500ml 중</div>
+        <div class="small">목표 <input type="number" id="goalInput" class="goal-input" min="100" step="50" value="1500">ml 중</div>
+        <div class="streak" id="streakText"></div>
       </div>
     </div>
     <div class="bar-outer"><div class="bar-inner" id="barInner" style="width:0%"></div></div>
@@ -381,9 +386,12 @@ const DEFAULT_SLOT_TIMES = ['10:00','11:30','14:00','16:30','18:00'];
 function loadSettings(){
   try{
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
-    if(s && Array.isArray(s.slotTimes) && s.slotTimes.length > 0) return s;
+    if(s && Array.isArray(s.slotTimes) && s.slotTimes.length > 0){
+      if(typeof s.goalMl !== 'number' || s.goalMl <= 0) s.goalMl = 1500;
+      return s;
+    }
   }catch(e){}
-  return { slotTimes: DEFAULT_SLOT_TIMES.slice() };
+  return { slotTimes: DEFAULT_SLOT_TIMES.slice(), goalMl: 1500 };
 }
 function saveSettings(){
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -400,7 +408,6 @@ function computeLabels(times){
   });
 }
 
-const GOAL_ML = 1500;
 const DEFAULT_ML = 355;
 const PRESETS = [
   {ml:355, label:'텀블러'},
@@ -408,7 +415,6 @@ const PRESETS = [
   {ml:240, label:'머그컵'}
 ];
 const STORAGE_KEY = 'water-tracker-data-v2';
-const ALARM_KEY = 'water-tracker-alarm-on';
 
 function loadData(){
   try{ return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
@@ -420,7 +426,7 @@ function saveData(data){
 }
 function pushToCloud(){
   if(!currentUser || applyingRemote) return;
-  db.collection('users').doc(currentUser.uid).set({ data, settings })
+  db.collection('users').doc(currentUser.uid).set({ data, settings }, { merge: true })
     .catch(e=>console.warn('cloud save failed', e));
 }
 function dateKey(d){
@@ -461,6 +467,27 @@ function newExtraId(){ return 'x' + (Date.now()) + '-' + (extraIdCounter++); }
 function nowHHMM(){
   const n = new Date();
   return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
+}
+function totalForKey(key){
+  const dObj = data[key];
+  if(!dObj) return 0;
+  if(Array.isArray(dObj)) return dObj.reduce((a,b)=>a+(b||0),0);
+  return (dObj.slots||[]).reduce((a,b)=>a+(b||0),0) + (dObj.extras||[]).reduce((a,e)=>a+(e.ml||0),0);
+}
+function computeStreak(){
+  let streak = 0;
+  let d = todayDate();
+  if(totalForKey(dateKey(d)) < settings.goalMl){
+    d.setDate(d.getDate() - 1); // 오늘이 아직 미달성이면 오늘은 빼고 어제부터 셈
+  }
+  while(true){
+    const key = dateKey(d);
+    if(totalForKey(key) >= settings.goalMl){
+      streak++;
+      d.setDate(d.getDate() - 1);
+    } else break;
+  }
+  return streak;
 }
 
 function renderMain(){
@@ -609,19 +636,31 @@ function renderMain(){
 
   const total = dayObj.slots.reduce((a,b)=>a+(b||0),0) + dayObj.extras.reduce((a,e)=>a+(e.ml||0),0);
   document.getElementById('totalMlText').textContent = `${total.toLocaleString()}ml`;
-  document.getElementById('goalText').textContent = `목표 ${GOAL_ML.toLocaleString()}ml 중`;
-  const pct = Math.min(100, Math.round((total/GOAL_ML)*100));
+  const goalInput = document.getElementById('goalInput');
+  if(document.activeElement !== goalInput) goalInput.value = settings.goalMl;
+  const pct = Math.min(100, Math.round((total/settings.goalMl)*100));
   document.getElementById('barInner').style.width = pct + '%';
   const waterRect = document.getElementById('waterRect');
-  const fillH = Math.min(60, (total/GOAL_ML)*60);
+  const fillH = Math.min(60, (total/settings.goalMl)*60);
   waterRect.setAttribute('y', 64 - fillH);
   waterRect.setAttribute('height', fillH);
+
+  const streak = computeStreak();
+  document.getElementById('streakText').textContent = streak > 0 ? `🔥 ${streak}일 연속 달성` : '';
 }
 
 document.getElementById('addExtraBtn').addEventListener('click', ()=>{
   const d = getDayObj(dateKey(currentEditDate));
   d.extras.push({ id: newExtraId(), time: nowHHMM(), ml: DEFAULT_ML });
   saveData(data);
+  renderMain();
+  renderCalendar();
+});
+document.getElementById('goalInput').addEventListener('change', (e)=>{
+  let v = parseInt(e.target.value, 10);
+  if(isNaN(v) || v < 100) v = 1500;
+  settings.goalMl = v;
+  saveSettings();
   renderMain();
   renderCalendar();
 });
@@ -655,16 +694,11 @@ function renderCalendar(){
   for(let d=1; d<=daysInMonth; d++){
     const dateObj = new Date(y, m, d);
     const key = dateKey(dateObj);
-    const dObj = data[key];
-    let total = 0;
-    if(dObj){
-      if(Array.isArray(dObj)) total = dObj.reduce((a,b)=>a+(b||0),0);
-      else total = (dObj.slots||[]).reduce((a,b)=>a+(b||0),0) + (dObj.extras||[]).reduce((a,e)=>a+(e.ml||0),0);
-    }
+    const total = totalForKey(key);
     const isFuture = dateObj > tDate;
     const el = document.createElement('div');
     let cls = 'cal-day';
-    if(total >= GOAL_ML){ cls += ' done'; successDays++; }
+    if(total >= settings.goalMl){ cls += ' done'; successDays++; }
     else if(total > 0){ cls += ' partial'; }
     if(key === tKey) cls += ' today';
     if(key === selKey) cls += ' selected';
@@ -683,7 +717,7 @@ function renderCalendar(){
     grid.appendChild(el);
   }
   document.getElementById('calSummary').innerHTML =
-    `이번 달 목표 달성(${GOAL_ML.toLocaleString()}ml) <b>${successDays}일</b>`;
+    `이번 달 목표 달성(${settings.goalMl.toLocaleString()}ml) <b>${successDays}일</b>`;
 }
 
 document.getElementById('prevDay').addEventListener('click', ()=>{
@@ -713,65 +747,6 @@ document.getElementById('nextMonth').addEventListener('click', ()=>{
   renderCalendar();
 });
 
-// --- Alarm (only fires while this page is open, always tied to real today/now) ---
-let notifiedToday = {};
-function loadNotifiedFlag(){
-  const key = todayKey() + '-notified';
-  try{ notifiedToday = JSON.parse(sessionStorage.getItem(key) || '{}'); }
-  catch(e){ notifiedToday = {}; }
-}
-function saveNotifiedFlag(){
-  sessionStorage.setItem(todayKey() + '-notified', JSON.stringify(notifiedToday));
-}
-loadNotifiedFlag();
-
-function updateAlarmUI(){
-  const on = localStorage.getItem(ALARM_KEY) === 'on' && Notification.permission === 'granted';
-  const btn = document.getElementById('alarmBtn');
-  btn.textContent = on ? '🔔' : '🔕';
-  btn.title = on ? '알림 켜짐 (탭하면 끄기)' : '알림 꺼짐 (탭하면 켜기)';
-}
-
-document.getElementById('alarmBtn').addEventListener('click', async ()=>{
-  const currentlyOn = localStorage.getItem(ALARM_KEY) === 'on';
-  if(currentlyOn){
-    localStorage.setItem(ALARM_KEY, 'off');
-    updateAlarmUI();
-    return;
-  }
-  if(!('Notification' in window)){
-    alert('이 브라우저는 알림 기능을 지원하지 않아요.');
-    return;
-  }
-  const perm = await Notification.requestPermission();
-  if(perm === 'granted'){
-    localStorage.setItem(ALARM_KEY, 'on');
-    new Notification('물마시기 알림 켜짐', { body: '10:00, 11:30, 14:00, 16:30, 18:00에 알려드릴게요. 페이지가 열려 있는 동안만 작동해요.' });
-  } else {
-    alert('알림 권한이 거부되었어요. 브라우저 설정에서 허용해주세요.');
-  }
-  updateAlarmUI();
-});
-
-function checkAlarmTick(){
-  const on = localStorage.getItem(ALARM_KEY) === 'on';
-  if(!on || Notification.permission !== 'granted') return;
-  const now = new Date();
-  const hh = String(now.getHours()).padStart(2,'0');
-  const mm = String(now.getMinutes()).padStart(2,'0');
-  const cur = `${hh}:${mm}`;
-  const labels = computeLabels(settings.slotTimes);
-  settings.slotTimes.forEach((time, i)=>{
-    if(time === cur && !notifiedToday[i]){
-      notifiedToday[i] = true;
-      saveNotifiedFlag();
-      new Notification('💧 물 마실 시간이에요', { body: `${labels[i]}잔 마실 시간이에요` });
-    }
-  });
-}
-
-setInterval(checkAlarmTick, 20000);
-updateAlarmUI();
 renderMain();
 renderCalendar();
 
@@ -792,19 +767,45 @@ function setAccountBar(user){
     bar.style.display = 'none';
   }
 }
+let pendingRemoteApply = null;
+function applyRemoteSnapshot(remote){
+  const newDataStr = JSON.stringify(remote.data || {});
+  const newSettingsStr = JSON.stringify(remote.settings || settings);
+  const sameData = newDataStr === JSON.stringify(data);
+  const sameSettings = newSettingsStr === JSON.stringify(settings);
+  if(sameData && sameSettings) return; // 내가 방금 쓴 내용이 그대로 되돌아온 것뿐이면 다시 그리지 않음
+
+  const active = document.activeElement;
+  if(active && active.tagName === 'INPUT'){
+    pendingRemoteApply = remote; // 지금 뭔가 입력 중이면, 끝날 때까지 미뤄둠
+    return;
+  }
+  applyingRemote = true;
+  if(remote.data) data = remote.data;
+  if(remote.settings && Array.isArray(remote.settings.slotTimes)) settings = remote.settings;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  renderMain();
+  renderCalendar();
+  applyingRemote = false;
+}
+document.addEventListener('focusout', (e)=>{
+  if(e.target && e.target.tagName === 'INPUT' && pendingRemoteApply){
+    setTimeout(()=>{
+      if(pendingRemoteApply && (!document.activeElement || document.activeElement.tagName !== 'INPUT')){
+        const r = pendingRemoteApply;
+        pendingRemoteApply = null;
+        applyRemoteSnapshot(r);
+      }
+    }, 80);
+  }
+});
+
 function startCloudSync(uid){
   if(cloudUnsub) cloudUnsub();
   cloudUnsub = db.collection('users').doc(uid).onSnapshot(doc=>{
     if(doc.exists){
-      const remote = doc.data();
-      applyingRemote = true;
-      if(remote.data) data = remote.data;
-      if(remote.settings && Array.isArray(remote.settings.slotTimes)) settings = remote.settings;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-      renderMain();
-      renderCalendar();
-      applyingRemote = false;
+      applyRemoteSnapshot(doc.data());
     } else {
       // first login on this account: push whatever we have locally up as the initial cloud copy
       pushToCloud();
