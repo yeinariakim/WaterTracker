@@ -381,7 +381,7 @@ let currentUser = null;
 let cloudUnsub = null;
 let applyingRemote = false; // true while we're writing data that came FROM the cloud, to avoid re-echoing it back up
 const SETTINGS_KEY = 'water-tracker-settings-v1';
-const DEFAULT_SLOT_TIMES = ['10:00','11:30','14:00','16:00','18:00'];
+const DEFAULT_SLOT_TIMES = ['10:00','11:30','14:00','16:30','18:00'];
 
 function loadSettings(){
   try{
@@ -450,8 +450,8 @@ function getDayObj(key){
   let d = data[key];
   if(!d){
     d = {
-      slots: settings.slotTimes.map(()=>0),
-      slotTimes: settings.slotTimes.slice(),
+      slots: DEFAULT_SLOT_TIMES.map(()=>0),
+      slotTimes: DEFAULT_SLOT_TIMES.slice(), // 새로 생기는 날은 항상 고정 기본값에서 시작 (다른 날짜의 수정에 영향받지 않음)
       extras: [], hidden: [], goal: settings.goalMl
     };
     data[key] = d;
@@ -636,11 +636,7 @@ function renderMain(){
       if(!inp.value) return;
       if(kind === 'slot'){
         const i = parseInt(key,10);
-        dayObj.slotTimes[i] = inp.value; // 지금 보고 있는 이 날짜에만 적용
-        if(dateKey(currentEditDate) === todayKey()){
-          settings.slotTimes[i] = inp.value; // 오늘 시간을 바꾼 거면, 앞으로 새로 생기는 날들의 기본값도 이걸로
-          saveSettings();
-        }
+        dayObj.slotTimes[i] = inp.value; // 지금 보고 있는 이 날짜에만 적용 (다른 날짜엔 영향 없음)
         saveData(data);
       } else {
         const ex = dayObj.extras.find(e=>e.id === key);
