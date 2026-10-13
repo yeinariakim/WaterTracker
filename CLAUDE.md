@@ -20,8 +20,7 @@
 | `index.html` | 앱 전체. 화면(HTML), 디자인(CSS), 동작(JavaScript)이 모두 이 한 파일에 들어 있어요. |
 | `firebase-messaging-sw.js` | 서비스 워커. 앱이 꺼져 있을 때도 푸시 알림을 받아서 띄워줘요. |
 | `send_push.py` | 푸시 알림을 실제로 보내는 파이썬 스크립트. |
-| `.github/workflows/water-push.yml` | `send_push.py`를 실행하는 GitHub Actions 설정. 외부 스케줄러(cron-job.org)가 API로 실행시켜요. |
-| `CRON_JOB_SETUP.md` | cron-job.org로 알림 시각을 예약하는 방법. |
+| `.github/workflows/water-push.yml` | GitHub Actions가 정해진 시간마다 `send_push.py`를 실행하게 하는 설정. |
 
 ## 실행해 보기
 
@@ -92,15 +91,16 @@ python3 -m http.server 8000
 ## 푸시 알림은 어떻게 가요?
 
 1. 사용자가 로그인하면 `setupPushNotifications()`가 기기 토큰을 받아 `users/{uid}.fcmTokens`에 저장해요.
-2. cron-job.org가 정해진 시각(한국 시간)에 GitHub API로 `water-push.yml`을 실행하면서 `slot`(평일 `w1`~`w5`, 주말 `e1`~`e3`)을 넘겨줘요.
-3. `send_push.py`는 모든 사용자의 토큰을 모아서 알림을 보내요. 알림 제목은 `slot`에 따라 💧 개수가 달라요.
+2. GitHub Actions(`water-push.yml`)가 cron 일정에 맞춰 `send_push.py`를 실행해요.
+3. `send_push.py`는 어떤 cron으로 실행됐는지를 칸 이름(평일 `w1`~`w5`, 주말 `e1`~`e3`)으로 바꾸고, 모든 사용자의 토큰을 모아서 알림을 보내요. 칸에 따라 💧 개수가 달라요.
 4. 브라우저에서는 `firebase-messaging-sw.js`가 알림을 띄워줘요.
 
 알아둘 것:
-- GitHub 예약 실행(`schedule`)은 몇 시간씩 늦게 시작될 때가 있어서 쓰지 않아요. `water-push.yml`에 cron을 다시 넣으면 늦은 알림이 중복으로 와요.
-- 알림 시각은 cron-job.org의 작업에서 바꿔요(시간대 Asia/Seoul). 새 칸을 추가하면 `send_push.py`의 `messages_map`에도 같은 이름을 넣어주세요. 모르는 `slot`이면 기본 문구("물 마실 시간이에요 (테스트)")가 나가요.
-- 앱 안의 기본 시간표(`DEFAULT_SLOT_TIMES`)와 알림 시간은 자동으로 연결되어 있지 않아요. 시간을 바꿀 땐 `index.html`의 `DEFAULT_SLOT_TIMES`와 알림 시간(cron-job.org 작업)을 함께 맞춰주세요. (이미 기록이 있는 날은 그날 저장된 시간표를 그대로 써요.)
-- GitHub Actions 탭에서 "Run workflow"를 누르면 바로 테스트 알림을 보낼 수 있어요 (`workflow_dispatch`, `slot`을 비우면 테스트 문구).
+- **cron 시간은 UTC 기준**이에요. 한국 시간(KST)은 여기에 9시간을 더하면 돼요. (예: `0 1 * * 1-5` = 평일 오전 10시)
+- 알림 시간을 바꾸려면 `water-push.yml`의 cron **과** `send_push.py`의 `schedule_to_slot` 키를 **똑같이** 바꿔야 해요. 하나만 바꾸면 기본 문구("물 마실 시간이에요 (테스트)")가 나가요.
+- GitHub 예약 실행은 붐빌 때 몇 시간씩 늦게 시작될 수 있어요(2026년 10월에 5~9시간 지연이 있었어요). 늦어도 알림은 그대로 보내요.
+- 앱 안의 기본 시간표(`DEFAULT_SLOT_TIMES`)와 알림 시간은 자동으로 연결되어 있지 않아요. 시간을 바꿀 땐 `index.html`의 `DEFAULT_SLOT_TIMES`와 알림 시간(cron, `schedule_to_slot`)을 함께 맞춰주세요. (이미 기록이 있는 날은 그날 저장된 시간표를 그대로 써요.)
+- GitHub Actions 탭에서 "Run workflow"를 누르면 바로 테스트 알림을 보낼 수 있어요 (`workflow_dispatch`, `slot`에 `w1`~`w5`/`e1`~`e3`을 넣으면 그 칸 알림, 비우면 테스트 문구).
 - 서버 쪽 비밀 키는 저장소 Secret `FIREBASE_SERVICE_ACCOUNT`에 있어요. 코드에 직접 넣지 마세요.
 - 서비스 워커에서 `showNotification`을 직접 부르지 마세요. Firebase가 이미 한 번 띄워주기 때문에 알림이 두 번 떠요.
 
