@@ -7,18 +7,20 @@ cred = credentials.Certificate(cred_json)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-schedule = os.environ.get('SCHEDULE', '')
+# cron-job.org가 workflow_dispatch로 넘겨주는 알림 칸 이름이에요.
+slot = os.environ.get('SLOT', '').strip()
 messages_map = {
-    '0 1 * * 1-5':  '💧',
-    '30 2 * * 1-5': '💧💧',
-    '0 5 * * 1-5':  '💧💧💧',
-    '0 7 * * 1-5':  '💧💧💧💧',
-    '0 9 * * 1-5':  '💧💧💧💧💧',
-    '0 2 * * 0,6':  '💧',
-    '0 5 * * 0,6':  '💧',
-    '0 8 * * 0,6':  '💧',
+    'w1': '💧',          # 평일 10:00
+    'w2': '💧💧',        # 평일 11:30
+    'w3': '💧💧💧',      # 평일 14:00
+    'w4': '💧💧💧💧',    # 평일 16:00
+    'w5': '💧💧💧💧💧',  # 평일 18:00
+    'e1': '💧',          # 주말 11:00
+    'e2': '💧',          # 주말 14:00
+    'e3': '💧',          # 주말 17:00
 }
-body = messages_map.get(schedule, '물 마실 시간이에요 (테스트)')
+body = messages_map.get(slot, '물 마실 시간이에요 (테스트)')
+print(f'slot={slot!r} -> {body}')
 
 tokens = []
 for doc in db.collection('users').stream():
@@ -32,6 +34,8 @@ for t in tokens:
     try:
         msg = messaging.Message(
             notification=messaging.Notification(title=body),
+            # 기기가 꺼져 있다가 30분 넘게 지나서 켜지면 이 알림은 버려요
+            webpush=messaging.WebpushConfig(headers={'TTL': '1800', 'Urgency': 'high'}),
             token=t,
         )
         messaging.send(msg)
