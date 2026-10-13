@@ -7,8 +7,20 @@ cred = credentials.Certificate(cred_json)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# cron-job.org가 workflow_dispatch로 넘겨주는 알림 칸 이름이에요.
-slot = os.environ.get('SLOT', '').strip()
+# 예약 실행이면 어떤 cron으로 실행됐는지(SCHEDULE)로 칸을 정하고,
+# 수동 실행이면 Actions 탭에서 넣은 slot 값을 써요.
+schedule_to_slot = {
+    '0 1 * * 1-5':  'w1',
+    '30 2 * * 1-5': 'w2',
+    '0 5 * * 1-5':  'w3',
+    '0 7 * * 1-5':  'w4',
+    '0 9 * * 1-5':  'w5',
+    '0 2 * * 0,6':  'e1',
+    '0 5 * * 0,6':  'e2',
+    '0 8 * * 0,6':  'e3',
+}
+schedule = os.environ.get('SCHEDULE', '')
+slot = schedule_to_slot.get(schedule) or os.environ.get('SLOT', '').strip()
 messages_map = {
     'w1': '💧',          # 평일 10:00
     'w2': '💧💧',        # 평일 11:30
